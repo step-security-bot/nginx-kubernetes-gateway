@@ -369,13 +369,13 @@ func TestGenerateHTTPServers(t *testing.T) {
 		},
 	}
 
-	getExpectedLocations := func(isHTTPS bool) []location {
+	getExpectedLocations := func(isHTTPS bool) []Location {
 		port := 80
 		if isHTTPS {
 			port = 443
 		}
 
-		return []location{
+		return []Location{
 			{
 				Path:      "/_route0",
 				Internal:  true,
@@ -410,14 +410,14 @@ func TestGenerateHTTPServers(t *testing.T) {
 			},
 			{
 				Path: "/redirect-implicit-port",
-				Return: &returnVal{
+				Return: &Return{
 					Code: 302,
 					URL:  fmt.Sprintf("$scheme://foo.example.com:%d$request_uri", port),
 				},
 			},
 			{
 				Path: "/redirect-explicit-port",
-				Return: &returnVal{
+				Return: &Return{
 					Code: 302,
 					URL:  "$scheme://bar.example.com:8080$request_uri",
 				},
@@ -425,7 +425,7 @@ func TestGenerateHTTPServers(t *testing.T) {
 		}
 	}
 
-	expectedServers := []server{
+	expectedServers := []Server{
 		{
 			IsDefaultHTTP: true,
 		},
@@ -438,7 +438,7 @@ func TestGenerateHTTPServers(t *testing.T) {
 		},
 		{
 			ServerName: "cafe.example.com",
-			SSL:        &ssl{Certificate: certPath, CertificateKey: certPath},
+			SSL:        &SSL{Certificate: certPath, CertificateKey: certPath},
 			Locations:  getExpectedLocations(true),
 		},
 	}
@@ -498,11 +498,11 @@ func TestGenerateHTTPUpstreams(t *testing.T) {
 		},
 	}
 
-	expUpstreams := httpUpstreams{
-		Upstreams: []upstream{
+	expUpstreams := HTTPUpstreams{
+		Upstreams: []Upstream{
 			{
 				Name: "up1",
-				Servers: []upstreamServer{
+				Servers: []UpstreamServer{
 					{
 						Address: "10.0.0.0:80",
 					},
@@ -516,7 +516,7 @@ func TestGenerateHTTPUpstreams(t *testing.T) {
 			},
 			{
 				Name: "up2",
-				Servers: []upstreamServer{
+				Servers: []UpstreamServer{
 					{
 						Address: "11.0.0.0:80",
 					},
@@ -524,7 +524,7 @@ func TestGenerateHTTPUpstreams(t *testing.T) {
 			},
 			{
 				Name: "up3",
-				Servers: []upstreamServer{
+				Servers: []UpstreamServer{
 					{
 						Address: nginx502Server,
 					},
@@ -532,7 +532,7 @@ func TestGenerateHTTPUpstreams(t *testing.T) {
 			},
 			{
 				Name: state.InvalidBackendRef,
-				Servers: []upstreamServer{
+				Servers: []UpstreamServer{
 					{
 						Address: nginx502Server,
 					},
@@ -550,7 +550,7 @@ func TestGenerateHTTPUpstreams(t *testing.T) {
 func TestGenerateUpstream(t *testing.T) {
 	tests := []struct {
 		stateUpstream    state.Upstream
-		expectedUpstream upstream
+		expectedUpstream Upstream
 		msg              string
 	}{
 		{
@@ -558,7 +558,7 @@ func TestGenerateUpstream(t *testing.T) {
 				Name:      "nil-endpoints",
 				Endpoints: nil,
 			},
-			expectedUpstream: upstream{Name: "nil-endpoints", Servers: []upstreamServer{{Address: nginx502Server}}},
+			expectedUpstream: Upstream{Name: "nil-endpoints", Servers: []UpstreamServer{{Address: nginx502Server}}},
 			msg:              "nil endpoints",
 		},
 		{
@@ -566,7 +566,7 @@ func TestGenerateUpstream(t *testing.T) {
 				Name:      "no-endpoints",
 				Endpoints: []resolver.Endpoint{},
 			},
-			expectedUpstream: upstream{Name: "no-endpoints", Servers: []upstreamServer{{Address: nginx502Server}}},
+			expectedUpstream: Upstream{Name: "no-endpoints", Servers: []UpstreamServer{{Address: nginx502Server}}},
 			msg:              "no endpoints",
 		},
 		{
@@ -587,7 +587,7 @@ func TestGenerateUpstream(t *testing.T) {
 					},
 				},
 			},
-			expectedUpstream: upstream{Name: "multiple-endpoints", Servers: []upstreamServer{{Address: "10.0.0.1:80"}, {Address: "10.0.0.2:80"}, {Address: "10.0.0.3:80"}}},
+			expectedUpstream: Upstream{Name: "multiple-endpoints", Servers: []UpstreamServer{{Address: "10.0.0.1:80"}, {Address: "10.0.0.2:80"}, {Address: "10.0.0.3:80"}}},
 			msg:              "multiple endpoints",
 		},
 	}
@@ -605,7 +605,7 @@ func TestGenerateReturnValForRedirectFilter(t *testing.T) {
 
 	tests := []struct {
 		filter   *v1beta1.HTTPRequestRedirectFilter
-		expected *returnVal
+		expected *Return
 		msg      string
 	}{
 		{
@@ -615,8 +615,8 @@ func TestGenerateReturnValForRedirectFilter(t *testing.T) {
 		},
 		{
 			filter: &v1beta1.HTTPRequestRedirectFilter{},
-			expected: &returnVal{
-				Code: statusFound,
+			expected: &Return{
+				Code: StatusFound,
 				URL:  "$scheme://$host:123$request_uri",
 			},
 			msg: "all fields are empty",
@@ -628,7 +628,7 @@ func TestGenerateReturnValForRedirectFilter(t *testing.T) {
 				Port:       (*v1beta1.PortNumber)(helpers.GetInt32Pointer(2022)),
 				StatusCode: helpers.GetIntPointer(101),
 			},
-			expected: &returnVal{
+			expected: &Return{
 				Code: 101,
 				URL:  "https://foo.example.com:2022$request_uri",
 			},
@@ -645,7 +645,7 @@ func TestGenerateReturnValForRedirectFilter(t *testing.T) {
 }
 
 func TestGenerateMatchLocation(t *testing.T) {
-	expected := location{
+	expected := Location{
 		Path:     "/path",
 		Internal: true,
 	}

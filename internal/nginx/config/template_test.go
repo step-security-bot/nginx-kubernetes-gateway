@@ -8,11 +8,11 @@ import (
 func TestExecuteForHTTPServers(t *testing.T) {
 	executor := newTemplateExecutor()
 
-	servers := httpServers{
-		Servers: []server{
+	servers := HTTPServers{
+		Servers: []Server{
 			{
 				ServerName: "example.com",
-				Locations: []location{
+				Locations: []Location{
 					{
 						Path:      "/",
 						ProxyPass: "http://example-upstream",
@@ -33,11 +33,11 @@ func TestExecuteForHTTPServers(t *testing.T) {
 func TestExecuteForHTTPUpstreams(t *testing.T) {
 	executor := newTemplateExecutor()
 
-	upstreams := httpUpstreams{
-		Upstreams: []upstream{
+	upstreams := HTTPUpstreams{
+		Upstreams: []Upstream{
 			{
 				Name: "example-upstream",
-				Servers: []upstreamServer{
+				Servers: []UpstreamServer{
 					{
 						Address: "http://10.0.0.1:80",
 					},
@@ -81,7 +81,7 @@ func TestExecuteForHTTPServersPanics(t *testing.T) {
 
 	executor := &templateExecutor{httpServersTemplate: tmpl}
 
-	_ = executor.ExecuteForHTTPServers(httpServers{})
+	_ = executor.ExecuteForHTTPServers(HTTPServers{})
 }
 
 func TestExecuteForHTTPUpstreamsPanics(t *testing.T) {
@@ -99,5 +99,5 @@ func TestExecuteForHTTPUpstreamsPanics(t *testing.T) {
 
 	executor := &templateExecutor{httpUpstreamsTemplate: tmpl}
 
-	_ = executor.ExecuteForHTTPUpstreams(httpUpstreams{})
+	_ = executor.ExecuteForHTTPUpstreams(HTTPUpstreams{})
 }

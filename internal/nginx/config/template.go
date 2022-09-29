@@ -29,7 +29,7 @@ func newTemplateExecutor() *templateExecutor {
 	return &templateExecutor{httpServersTemplate: serverTemplate, httpUpstreamsTemplate: upstreamTemplate}
 }
 
-func (e *templateExecutor) ExecuteForHTTPServers(servers httpServers) []byte {
+func (e *templateExecutor) ExecuteForHTTPServers(servers HTTPServers) []byte {
 	var buf bytes.Buffer
 
 	err := e.httpServersTemplate.Execute(&buf, servers)
@@ -40,7 +40,7 @@ func (e *templateExecutor) ExecuteForHTTPServers(servers httpServers) []byte {
 	return buf.Bytes()
 }
 
-func (e *templateExecutor) ExecuteForHTTPUpstreams(upstreams httpUpstreams) []byte {
+func (e *templateExecutor) ExecuteForHTTPUpstreams(upstreams HTTPUpstreams) []byte {
 	var buf bytes.Buffer
 
 	err := e.httpUpstreamsTemplate.Execute(&buf, upstreams)

@@ -1,51 +1,61 @@
 package config
 
-type httpServers struct {
-	Servers []server
+// HTTPServers holds the list of HTTP servers.
+type HTTPServers struct {
+	Servers []Server
 }
 
-type httpUpstreams struct {
-	Upstreams []upstream
+// HTTPUpstreams holds the list of HTTP upstreams.
+type HTTPUpstreams struct {
+	Upstreams []Upstream
 }
 
-type server struct {
-	SSL           *ssl
+// Server holds all configuration for an HTTP server.
+type Server struct {
+	SSL           *SSL
 	ServerName    string
-	Locations     []location
+	Locations     []Location
 	IsDefaultHTTP bool
 	IsDefaultSSL  bool
 }
 
-type location struct {
-	Return       *returnVal
+// Location holds all configuration for an HTTP location.
+type Location struct {
+	Return       *Return
 	Path         string
 	ProxyPass    string
 	HTTPMatchVar string
 	Internal     bool
 }
 
-type returnVal struct {
-	Code statusCode
+// Return represents an HTTP return.
+type Return struct {
+	Code StatusCode
 	URL  string
 }
 
-type ssl struct {
+// SSL holds all SSL related configuration.
+type SSL struct {
 	Certificate    string
 	CertificateKey string
 }
 
-type statusCode int
+// StatusCode is an HTTP status code.
+type StatusCode int
 
 const (
-	statusFound    statusCode = 302
-	statusNotFound statusCode = 404
+	StatusFound StatusCode = 302
+	// StatusNotFound is the HTTP 404 status code.
+	StatusNotFound StatusCode = 404
 )
 
-type upstream struct {
+// Upstream holds all configuration for an HTTP upstream.
+type Upstream struct {
 	Name    string
-	Servers []upstreamServer
+	Servers []UpstreamServer
 }
 
-type upstreamServer struct {
+// UpstreamServer holds all configuration for an HTTP upstream server.
+type UpstreamServer struct {
 	Address string
 }

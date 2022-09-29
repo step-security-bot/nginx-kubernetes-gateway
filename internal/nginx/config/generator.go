@@ -43,10 +43,10 @@ func (g *GeneratorImpl) Generate(conf state.Configuration) []byte {
 	return retVal
 }
 
-func generateHTTPServers(conf state.Configuration) httpServers {
+func generateHTTPServers(conf state.Configuration) HTTPServers {
 	confServers := append(conf.HTTPServers, conf.SSLServers...)
 
-	servers := make([]server, 0, len(confServers)+2)
+	servers := make([]Server, 0, len(confServers)+2)
 
 	if len(conf.HTTPServers) > 0 {
 		defaultHTTPServer := generateDefaultHTTPServer()
@@ -64,24 +64,24 @@ func generateHTTPServers(conf state.Configuration) httpServers {
 		servers = append(servers, generateServer(s))
 	}
 
-	return httpServers{Servers: servers}
+	return HTTPServers{Servers: servers}
 }
 
-func generateDefaultSSLServer() server {
-	return server{IsDefaultSSL: true}
+func generateDefaultSSLServer() Server {
+	return Server{IsDefaultSSL: true}
 }
 
-func generateDefaultHTTPServer() server {
-	return server{IsDefaultHTTP: true}
+func generateDefaultHTTPServer() Server {
+	return Server{IsDefaultHTTP: true}
 }
 
-func generateServer(virtualServer state.VirtualServer) server {
-	s := server{ServerName: virtualServer.Hostname}
+func generateServer(virtualServer state.VirtualServer) Server {
+	s := Server{ServerName: virtualServer.Hostname}
 
 	listenerPort := 80
 
 	if virtualServer.SSL != nil {
-		s.SSL = &ssl{
+		s.SSL = &SSL{
 			Certificate:    virtualServer.SSL.CertificatePath,
 			CertificateKey: virtualServer.SSL.CertificatePath,
 		}
@@ -91,25 +91,29 @@ func generateServer(virtualServer state.VirtualServer) server {
 
 	if len(virtualServer.PathRules) == 0 {
 		// generate default "/" 404 location
-		s.Locations = []location{{Path: "/", Return: &returnVal{Code: statusNotFound}}}
+		s.Locations = []Location{{Path: "/", Return: &Return{Code: StatusNotFound}}}
 		return s
 	}
 
-	locs := make([]location, 0, len(virtualServer.PathRules)) // FIXME(pleshakov): expand with rule.Routes
+	locs := make([]Location, 0, len(virtualServer.PathRules)) // FIXME(pleshakov): expand with rule.Routes
 	for _, rule := range virtualServer.PathRules {
 		matches := make([]httpMatch, 0, len(rule.MatchRules))
 
 		for matchRuleIdx, r := range rule.MatchRules {
 			m := r.GetMatch()
 
-			var loc location
+			var loc Location
 
 			// handle case where the only route is a path-only match
 			// generate a standard location block without http_matches.
 			if len(rule.MatchRules) == 1 && isPathOnlyMatch(m) {
-				loc = location{
+				loc = Location{
 					Path: rule.Path,
 				}
+				locs = append(locs, Location{
+					Path:      rule.Path,
+					ProxyPass: generateProxyPass(r.UpstreamName),
+				})
 			} else {
 				path := createPathForMatch(rule.Path, matchRuleIdx)
 				loc = generateMatchLocation(path)
@@ -139,7 +143,7 @@ func generateServer(virtualServer state.VirtualServer) server {
 				panic(fmt.Errorf("could not marshal http match: %w", err))
 			}
 
-			pathLoc := location{
+			pathLoc := Location{
 				Path:         rule.Path,
 				HTTPMatchVar: string(b),
 			}
@@ -153,7 +157,7 @@ func generateServer(virtualServer state.VirtualServer) server {
 	return s
 }
 
-func generateReturnValForRedirectFilter(filter *v1beta1.HTTPRequestRedirectFilter, listenerPort int) *returnVal {
+func generateReturnValForRedirectFilter(filter *v1beta1.HTTPRequestRedirectFilter, listenerPort int) *Return {
 	if filter == nil {
 		return nil
 	}
@@ -166,9 +170,9 @@ func generateReturnValForRedirectFilter(filter *v1beta1.HTTPRequestRedirectFilte
 	// FIXME(pleshakov): Unknown values here must result in the implementation setting the Attached Condition for
 	// the Route to  `status: False`, with a Reason of `UnsupportedValue`. In that case, all routes of the Route will be
 	// ignored. NGINX will return 500. This should be implemented in the validation layer.
-	code := statusFound
+	code := StatusFound
 	if filter.StatusCode != nil {
-		code = statusCode(*filter.StatusCode)
+		code = StatusCode(*filter.StatusCode)
 	}
 
 	port := listenerPort
@@ -182,31 +186,32 @@ func generateReturnValForRedirectFilter(filter *v1beta1.HTTPRequestRedirectFilte
 		scheme = *filter.Scheme
 	}
 
-	return &returnVal{
+	return &Return{
 		Code: code,
 		URL:  fmt.Sprintf("%s://%s:%d$request_uri", scheme, hostname, port),
 	}
 }
 
-func generateHTTPUpstreams(upstreams []state.Upstream) httpUpstreams {
+func generateHTTPUpstreams(upstreams []state.Upstream) HTTPUpstreams {
 	// capacity is the number of upstreams + 1 for the invalid backend ref upstream
-	ups := make([]upstream, 0, len(upstreams)+1)
+	ups := make([]Upstream, 0, len(upstreams)+1)
+
 	for _, u := range upstreams {
 		ups = append(ups, generateUpstream(u))
 	}
 
 	ups = append(ups, generateInvalidBackendRefUpstream())
 
-	return httpUpstreams{
+	return HTTPUpstreams{
 		Upstreams: ups,
 	}
 }
 
-func generateUpstream(up state.Upstream) upstream {
+func generateUpstream(up state.Upstream) Upstream {
 	if len(up.Endpoints) == 0 {
-		return upstream{
+		return Upstream{
 			Name: up.Name,
-			Servers: []upstreamServer{
+			Servers: []UpstreamServer{
 				{
 					Address: nginx502Server,
 				},
@@ -214,23 +219,23 @@ func generateUpstream(up state.Upstream) upstream {
 		}
 	}
 
-	upstreamServers := make([]upstreamServer, len(up.Endpoints))
+	upstreamServers := make([]UpstreamServer, len(up.Endpoints))
 	for idx, ep := range up.Endpoints {
-		upstreamServers[idx] = upstreamServer{
+		upstreamServers[idx] = UpstreamServer{
 			Address: fmt.Sprintf("%s:%d", ep.Address, ep.Port),
 		}
 	}
 
-	return upstream{
+	return Upstream{
 		Name:    up.Name,
 		Servers: upstreamServers,
 	}
 }
 
-func generateInvalidBackendRefUpstream() upstream {
-	return upstream{
+func generateInvalidBackendRefUpstream() Upstream {
+	return Upstream{
 		Name: state.InvalidBackendRef,
-		Servers: []upstreamServer{
+		Servers: []UpstreamServer{
 			{
 				Address: nginx502Server,
 			},
@@ -242,8 +247,8 @@ func generateProxyPass(address string) string {
 	return "http://" + address
 }
 
-func generateMatchLocation(path string) location {
-	return location{
+func generateMatchLocation(path string) Location {
+	return Location{
 		Path:     path,
 		Internal: true,
 	}
