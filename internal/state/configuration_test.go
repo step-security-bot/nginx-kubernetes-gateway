@@ -56,17 +56,6 @@ func TestBuildConfiguration(t *testing.T) {
 		return hr
 	}
 
-	fooBackendSvc := backendService{Name: "foo", Namespace: "test", Port: 80}
-
-	fooBackend := backend{
-		Endpoints: []resolver.Endpoint{
-			{
-				Address: "10.0.0.0",
-				Port:    8080,
-			},
-		},
-	}
-
 	fooUpstreamName := "test_foo_80"
 
 	fooUpstream := Upstream{
@@ -79,115 +68,93 @@ func TestBuildConfiguration(t *testing.T) {
 		},
 	}
 
-	hr1 := createRoute("hr-1", "foo.example.com", "listener-80-1", "/")
-
-	routeHR1 := &route{
-		Source: hr1,
-		ValidSectionNameRefs: map[string]struct{}{
-			"listener-80-1": {},
-		},
-		InvalidSectionNameRefs: map[string]struct{}{},
-		BackendServices: map[ruleIndex]backendService{
-			ruleIndex(0): fooBackendSvc,
-		},
+	createBackendGroup := func(nsname types.NamespacedName, idx int) BackendGroup {
+		return BackendGroup{
+			Source:  nsname,
+			RuleIdx: idx,
+			Backends: []BackendRef{
+				{
+					Name:   fooUpstreamName,
+					Valid:  true,
+					Weight: 1,
+				},
+			},
+		}
 	}
 
-	hr2 := createRoute("hr-2", "bar.example.com", "listener-80-1", "/")
+	createInternalRoute := func(source *v1beta1.HTTPRoute, validSectionName string, groups ...BackendGroup) *route {
+		r := &route{
+			Source:                 source,
+			InvalidSectionNameRefs: make(map[string]struct{}),
+			ValidSectionNameRefs:   map[string]struct{}{validSectionName: {}},
+			BackendRefs: BackendRefs{
+				Resolved: map[string][]resolver.Endpoint{
+					"test_foo_80": {
+						{
+							Address: "10.0.0.0",
+							Port:    8080,
+						},
+					},
+				},
+				ByRule: make(map[ruleIndex]BackendGroup),
+			},
+		}
+		for idx, group := range groups {
+			r.BackendRefs.ByRule[ruleIndex(idx)] = group
+		}
 
-	routeHR2 := &route{
-		Source: hr2,
-		ValidSectionNameRefs: map[string]struct{}{
-			"listener-80-1": {},
-		},
-		InvalidSectionNameRefs: map[string]struct{}{},
-		BackendServices: map[ruleIndex]backendService{
-			ruleIndex(0): fooBackendSvc,
-		},
+		return r
 	}
 
-	httpsHR1 := createRoute("https-hr-1", "foo.example.com", "listener-443-1", "/")
+	createTestResources := func(name, hostname, listenerName string, paths ...string) (
+		*v1beta1.HTTPRoute, []BackendGroup, *route,
+	) {
+		hr := createRoute(name, hostname, listenerName, paths...)
+		groups := make([]BackendGroup, 0, len(paths))
+		for idx := range paths {
+			groups = append(groups, createBackendGroup(types.NamespacedName{Namespace: "test", Name: name}, idx))
+		}
 
-	httpsRouteHR1 := &route{
-		Source: httpsHR1,
-		ValidSectionNameRefs: map[string]struct{}{
-			"listener-443-1": {},
-		},
-		InvalidSectionNameRefs: map[string]struct{}{},
-		BackendServices: map[ruleIndex]backendService{
-			ruleIndex(0): fooBackendSvc,
-		},
+		route := createInternalRoute(hr, listenerName, groups...)
+		return hr, groups, route
 	}
 
-	httpsHR2 := createRoute("https-hr-2", "bar.example.com", "listener-443-1", "/")
+	hr1, hr1Groups, routeHR1 := createTestResources("hr-1", "foo.example.com", "listener-80-1", "/")
+	hr2, hr2Groups, routeHR2 := createTestResources("hr-2", "bar.example.com", "listener-80-1", "/")
+	hr3, hr3Groups, routeHR3 := createTestResources("hr-3", "foo.example.com", "listener-80-1", "/", "/third")
+	hr4, hr4Groups, routeHR4 := createTestResources("hr-4", "foo.example.com", "listener-80-1", "/fourth", "/")
 
-	httpsRouteHR2 := &route{
-		Source: httpsHR2,
-		ValidSectionNameRefs: map[string]struct{}{
-			"listener-443-1": {},
-		},
-		InvalidSectionNameRefs: map[string]struct{}{},
-		BackendServices: map[ruleIndex]backendService{
-			ruleIndex(0): fooBackendSvc,
-		},
-	}
+	httpsHR1, httpsHR1Groups, httpsRouteHR1 := createTestResources(
+		"https-hr-1",
+		"foo.example.com",
+		"listener-443-1",
+		"/",
+	)
 
-	hr3 := createRoute("hr-3", "foo.example.com", "listener-80-1", "/", "/third")
+	httpsHR2, httpsHR2Groups, httpsRouteHR2 := createTestResources(
+		"https-hr-2",
+		"bar.example.com",
+		"listener-443-1",
+		"/",
+	)
 
-	routeHR3 := &route{
-		Source: hr3,
-		ValidSectionNameRefs: map[string]struct{}{
-			"listener-80-1": {},
-		},
-		InvalidSectionNameRefs: map[string]struct{}{},
-		BackendServices: map[ruleIndex]backendService{
-			ruleIndex(0): fooBackendSvc,
-			ruleIndex(1): fooBackendSvc,
-		},
-	}
+	httpsHR3, httpsHR3Groups, httpsRouteHR3 := createTestResources(
+		"https-hr-3",
+		"foo.example.com",
+		"listener-443-1",
+		"/", "/third",
+	)
 
-	httpsHR3 := createRoute("https-hr-3", "foo.example.com", "listener-443-1", "/", "/third")
-
-	httpsRouteHR3 := &route{
-		Source: httpsHR3,
-		ValidSectionNameRefs: map[string]struct{}{
-			"listener-443-1": {},
-		},
-		InvalidSectionNameRefs: map[string]struct{}{},
-		BackendServices: map[ruleIndex]backendService{
-			ruleIndex(0): fooBackendSvc,
-			ruleIndex(1): fooBackendSvc,
-		},
-	}
-
-	hr4 := createRoute("hr-4", "foo.example.com", "listener-80-1", "/fourth", "/")
-
-	routeHR4 := &route{
-		Source: hr4,
-		ValidSectionNameRefs: map[string]struct{}{
-			"listener-80-1": {},
-		},
-		InvalidSectionNameRefs: map[string]struct{}{},
-		BackendServices: map[ruleIndex]backendService{
-			ruleIndex(0): fooBackendSvc,
-			ruleIndex(1): fooBackendSvc,
-		},
-	}
-
-	httpsHR4 := createRoute("https-hr-4", "foo.example.com", "listener-443-1", "/fourth", "/")
-
-	httpsRouteHR4 := &route{
-		Source: httpsHR4,
-		ValidSectionNameRefs: map[string]struct{}{
-			"listener-443-1": {},
-		},
-		InvalidSectionNameRefs: map[string]struct{}{},
-		BackendServices: map[ruleIndex]backendService{
-			ruleIndex(0): fooBackendSvc,
-			ruleIndex(1): fooBackendSvc,
-		},
-	}
+	httpsHR4, httpsHR4Groups, httpsRouteHR4 := createTestResources(
+		"https-hr-4",
+		"foo.example.com",
+		"listener-443-1",
+		"/fourth", "/",
+	)
 
 	httpsHR5 := createRoute("https-hr-5", "example.com", "listener-443-with-hostname", "/")
+	httpsHR5Group := createBackendGroup(types.NamespacedName{Namespace: httpsHR5.Namespace, Name: httpsHR5.Name}, 0)
+	httpsHR5Group.Backends[0].Valid = false
 
 	httpsRouteHR5 := &route{
 		Source: httpsHR5,
@@ -195,8 +162,10 @@ func TestBuildConfiguration(t *testing.T) {
 			"listener-443-with-hostname": {},
 		},
 		InvalidSectionNameRefs: map[string]struct{}{},
-		BackendServices: map[ruleIndex]backendService{
-			ruleIndex(0): {}, // invalid upstream
+		BackendRefs: BackendRefs{
+			ByRule: map[ruleIndex]BackendGroup{
+				0: httpsHR5Group,
+			},
 		},
 	}
 
@@ -207,17 +176,16 @@ func TestBuildConfiguration(t *testing.T) {
 		},
 	}
 
-	hr6 := addFilters(
-		createRoute("hr-6", "foo.example.com", "listener-80-1", "/"),
+	hr5 := addFilters(
+		createRoute("hr-5", "foo.example.com", "listener-80-1", "/"),
 		[]v1beta1.HTTPRouteFilter{redirect},
 	)
 
-	routeHR6 := &route{
-		Source: hr6,
-		ValidSectionNameRefs: map[string]struct{}{
-			"listener-80-1": {},
-		},
-		InvalidSectionNameRefs: map[string]struct{}{},
+	routeHR5 := &route{
+		Source:                 hr5,
+		InvalidSectionNameRefs: make(map[string]struct{}),
+		ValidSectionNameRefs:   map[string]struct{}{"listener-80-1": {}},
+		BackendRefs:            BackendRefs{},
 	}
 
 	listener80 := v1beta1.Listener{
@@ -291,9 +259,10 @@ func TestBuildConfiguration(t *testing.T) {
 				Routes: map[types.NamespacedName]*route{},
 			},
 			expected: Configuration{
-				HTTPServers: []VirtualServer{},
-				SSLServers:  []VirtualServer{},
-				Upstreams:   []Upstream{},
+				HTTPServers:   []VirtualServer{},
+				SSLServers:    []VirtualServer{},
+				Upstreams:     []Upstream{},
+				BackendGroups: []BackendGroup{},
 			},
 			msg: "no listeners and routes",
 		},
@@ -317,9 +286,10 @@ func TestBuildConfiguration(t *testing.T) {
 				Routes: map[types.NamespacedName]*route{},
 			},
 			expected: Configuration{
-				HTTPServers: []VirtualServer{},
-				SSLServers:  []VirtualServer{},
-				Upstreams:   []Upstream{},
+				HTTPServers:   []VirtualServer{},
+				SSLServers:    []VirtualServer{},
+				Upstreams:     []Upstream{},
+				BackendGroups: []BackendGroup{},
 			},
 			msg: "http listener with no routes",
 		},
@@ -362,7 +332,8 @@ func TestBuildConfiguration(t *testing.T) {
 						SSL:      &SSL{CertificatePath: secretPath},
 					},
 				},
-				Upstreams: []Upstream{},
+				Upstreams:     []Upstream{},
+				BackendGroups: []BackendGroup{},
 			},
 			msg: "https listeners with no routes",
 		},
@@ -396,9 +367,10 @@ func TestBuildConfiguration(t *testing.T) {
 				},
 			},
 			expected: Configuration{
-				HTTPServers: []VirtualServer{},
-				SSLServers:  []VirtualServer{},
-				Upstreams:   []Upstream{},
+				HTTPServers:   []VirtualServer{},
+				SSLServers:    []VirtualServer{},
+				Upstreams:     []Upstream{},
+				BackendGroups: []BackendGroup{},
 			},
 			msg: "invalid listener",
 		},
@@ -429,9 +401,6 @@ func TestBuildConfiguration(t *testing.T) {
 					{Namespace: "test", Name: "hr-1"}: routeHR1,
 					{Namespace: "test", Name: "hr-2"}: routeHR2,
 				},
-				Backends: map[backendService]backend{
-					fooBackendSvc: fooBackend,
-				},
 			},
 			expected: Configuration{
 				HTTPServers: []VirtualServer{
@@ -444,7 +413,7 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      0,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: hr2Groups[0],
 										Source:       hr2,
 									},
 								},
@@ -460,7 +429,7 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      0,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: hr1Groups[0],
 										Source:       hr1,
 									},
 								},
@@ -468,8 +437,9 @@ func TestBuildConfiguration(t *testing.T) {
 						},
 					},
 				},
-				SSLServers: []VirtualServer{},
-				Upstreams:  []Upstream{fooUpstream},
+				SSLServers:    []VirtualServer{},
+				Upstreams:     []Upstream{fooUpstream},
+				BackendGroups: []BackendGroup{hr1Groups[0], hr2Groups[0]},
 			},
 			msg: "one http listener with two routes for different hostnames",
 		},
@@ -513,9 +483,6 @@ func TestBuildConfiguration(t *testing.T) {
 					{Namespace: "test", Name: "https-hr-2"}: httpsRouteHR2,
 					{Namespace: "test", Name: "https-hr-5"}: httpsRouteHR5,
 				},
-				Backends: map[backendService]backend{
-					fooBackendSvc: fooBackend,
-				},
 			},
 			expected: Configuration{
 				HTTPServers: []VirtualServer{},
@@ -529,7 +496,7 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      0,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: httpsHR2Groups[0],
 										Source:       httpsHR2,
 									},
 								},
@@ -548,7 +515,7 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      0,
-										UpstreamName: InvalidBackendRef,
+										BackendGroup: httpsHR5Group,
 										Source:       httpsHR5,
 									},
 								},
@@ -567,7 +534,7 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      0,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: httpsHR1Groups[0],
 										Source:       httpsHR1,
 									},
 								},
@@ -582,7 +549,8 @@ func TestBuildConfiguration(t *testing.T) {
 						SSL:      &SSL{CertificatePath: secretPath},
 					},
 				},
-				Upstreams: []Upstream{fooUpstream},
+				Upstreams:     []Upstream{fooUpstream},
+				BackendGroups: []BackendGroup{httpsHR1Groups[0], httpsHR2Groups[0], httpsHR5Group},
 			},
 			msg: "two https listeners each with routes for different hostnames",
 		},
@@ -626,9 +594,6 @@ func TestBuildConfiguration(t *testing.T) {
 					{Namespace: "test", Name: "https-hr-3"}: httpsRouteHR3,
 					{Namespace: "test", Name: "https-hr-4"}: httpsRouteHR4,
 				},
-				Backends: map[backendService]backend{
-					fooBackendSvc: fooBackend,
-				},
 			},
 			expected: Configuration{
 				HTTPServers: []VirtualServer{
@@ -641,13 +606,13 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      0,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: hr3Groups[0],
 										Source:       hr3,
 									},
 									{
 										MatchIdx:     0,
 										RuleIdx:      1,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: hr4Groups[1],
 										Source:       hr4,
 									},
 								},
@@ -658,7 +623,7 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      0,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: hr4Groups[0],
 										Source:       hr4,
 									},
 								},
@@ -669,7 +634,7 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      1,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: hr3Groups[1],
 										Source:       hr3,
 									},
 								},
@@ -690,13 +655,13 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      0,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: httpsHR3Groups[0],
 										Source:       httpsHR3,
 									},
 									{
 										MatchIdx:     0,
 										RuleIdx:      1,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: httpsHR4Groups[1],
 										Source:       httpsHR4,
 									},
 								},
@@ -707,7 +672,7 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      0,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: httpsHR4Groups[0],
 										Source:       httpsHR4,
 									},
 								},
@@ -718,7 +683,7 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      1,
-										UpstreamName: fooUpstreamName,
+										BackendGroup: httpsHR3Groups[1],
 										Source:       httpsHR3,
 									},
 								},
@@ -730,7 +695,8 @@ func TestBuildConfiguration(t *testing.T) {
 						SSL:      &SSL{CertificatePath: secretPath},
 					},
 				},
-				Upstreams: []Upstream{fooUpstream},
+				Upstreams:     []Upstream{fooUpstream},
+				BackendGroups: []BackendGroup{hr3Groups[0], hr3Groups[1], hr4Groups[0], hr4Groups[1], httpsHR3Groups[0], httpsHR3Groups[1], httpsHR4Groups[0], httpsHR4Groups[1]},
 			},
 			msg: "one http and one https listener with two routes with the same hostname with and without collisions",
 		},
@@ -784,9 +750,6 @@ func TestBuildConfiguration(t *testing.T) {
 				Routes: map[types.NamespacedName]*route{
 					{Namespace: "test", Name: "hr-1"}: routeHR1,
 				},
-				Backends: map[backendService]backend{
-					fooBackendSvc: fooBackend,
-				},
 			},
 			expected: Configuration{},
 			msg:      "missing gatewayclass",
@@ -816,7 +779,7 @@ func TestBuildConfiguration(t *testing.T) {
 							Source: listener80,
 							Valid:  true,
 							Routes: map[types.NamespacedName]*route{
-								{Namespace: "test", Name: "hr-6"}: routeHR6,
+								{Namespace: "test", Name: "hr-5"}: routeHR5,
 							},
 							AcceptedHostnames: map[string]struct{}{
 								"foo.example.com": {},
@@ -825,7 +788,7 @@ func TestBuildConfiguration(t *testing.T) {
 					},
 				},
 				Routes: map[types.NamespacedName]*route{
-					{Namespace: "test", Name: "hr-6"}: routeHR6,
+					{Namespace: "test", Name: "hr-5"}: routeHR5,
 				},
 			},
 			expected: Configuration{
@@ -839,8 +802,8 @@ func TestBuildConfiguration(t *testing.T) {
 									{
 										MatchIdx:     0,
 										RuleIdx:      0,
-										Source:       hr6,
-										UpstreamName: "invalid_backend_ref",
+										Source:       hr5,
+										BackendGroup: BackendGroup{},
 										Filters: Filters{
 											RequestRedirect: redirect.RequestRedirect,
 										},
@@ -850,8 +813,9 @@ func TestBuildConfiguration(t *testing.T) {
 						},
 					},
 				},
-				SSLServers: []VirtualServer{},
-				Upstreams:  []Upstream{},
+				SSLServers:    []VirtualServer{},
+				Upstreams:     []Upstream{},
+				BackendGroups: []BackendGroup{},
 			},
 			msg: "one http listener with one route with filters",
 		},
@@ -1089,35 +1053,208 @@ func TestBuildUpstreams(t *testing.T) {
 		},
 	}
 
-	backends := map[backendService]backend{
-		{Name: "foo", Namespace: "test", Port: 80}:              {Endpoints: fooEndpoints},
-		{Name: "bar", Namespace: "test", Port: 8080}:            {Endpoints: barEndpoints},
-		{Name: "nil-endpoints", Namespace: "test", Port: 443}:   {Endpoints: nil},
-		{Name: "empty-endpoints", Namespace: "test", Port: 443}: {Endpoints: []resolver.Endpoint{}},
+	bazEndpoints := []resolver.Endpoint{
+		{
+			Address: "12.0.0.0",
+			Port:    80,
+		},
+	}
+
+	baz2Endpoints := []resolver.Endpoint{
+		{
+			Address: "13.0.0.0",
+			Port:    80,
+		},
+	}
+
+	routes := map[types.NamespacedName]*route{
+		{Name: "hr1", Namespace: "test"}: {
+			BackendRefs: BackendRefs{
+				Resolved: map[string][]resolver.Endpoint{
+					"foo": fooEndpoints,
+					"bar": barEndpoints,
+				},
+			},
+		},
+		{Name: "hr2", Namespace: "test"}: {
+			BackendRefs: BackendRefs{
+				Resolved: map[string][]resolver.Endpoint{
+					"foo": fooEndpoints, // shouldn't duplicate foo upstream
+					"baz": bazEndpoints,
+				},
+			},
+		},
+		{Name: "hr3", Namespace: "test"}: {
+			BackendRefs: BackendRefs{
+				Resolved: map[string][]resolver.Endpoint{
+					"nil-endpoints":   nil,
+					"empty-endpoints": {},
+				},
+			},
+		},
+	}
+
+	routes2 := map[types.NamespacedName]*route{
+		{Name: "hr4", Namespace: "test"}: {
+			BackendRefs: BackendRefs{
+				Resolved: map[string][]resolver.Endpoint{
+					"baz":  bazEndpoints, // shouldn't duplicate baz upstream
+					"baz2": baz2Endpoints,
+				},
+			},
+		},
+	}
+
+	invalidRoutes := map[types.NamespacedName]*route{
+		{Name: "invalid", Namespace: "test"}: {
+			BackendRefs: BackendRefs{
+				Resolved: map[string][]resolver.Endpoint{
+					"invalid-endpoint": {
+						{
+							Address: "invalid",
+							Port:    80,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	listeners := map[string]*listener{
+		"invalid-listener": {
+			Valid:  false,
+			Routes: invalidRoutes,
+		},
+		"listener-1": {
+			Valid:  true,
+			Routes: routes,
+		},
+		"listener-2": {
+			Valid:  true,
+			Routes: routes2,
+		},
 	}
 
 	expUpstreams := []Upstream{
-		{Name: "test_bar_8080", Endpoints: barEndpoints},
-		{Name: "test_empty-endpoints_443", Endpoints: []resolver.Endpoint{}},
-		{Name: "test_foo_80", Endpoints: fooEndpoints},
-		{Name: "test_nil-endpoints_443", Endpoints: nil},
+		{Name: "bar", Endpoints: barEndpoints},
+		{Name: "baz", Endpoints: bazEndpoints},
+		{Name: "baz2", Endpoints: baz2Endpoints},
+		{Name: "empty-endpoints", Endpoints: []resolver.Endpoint{}},
+		{Name: "foo", Endpoints: fooEndpoints},
+		{Name: "nil-endpoints", Endpoints: nil},
 	}
 
-	upstreams := buildUpstreams(backends)
+	upstreams := buildUpstreams(listeners)
 
 	if diff := helpers.Diff(expUpstreams, upstreams); diff != "" {
-		t.Errorf("buildUpstreams() returned incorrect Upstreams, diff: %+v", diff)
+		t.Errorf("buildUpstreams() mismatch: %+v", diff)
 	}
 }
 
-func TestGenerateUpstreamName(t *testing.T) {
-	// empty backend service
-	if name := generateUpstreamName(backendService{}); name != InvalidBackendRef {
-		t.Errorf("generateUpstreamName() returned unexepected name: %s, expected: %s", name, InvalidBackendRef)
+func TestBuildBackendGroups(t *testing.T) {
+	createBackendGroup := func(name string, ruleIdx int, backendNames ...string) BackendGroup {
+		backends := make([]BackendRef, len(backendNames))
+		for i, name := range backendNames {
+			backends[i] = BackendRef{Name: name}
+		}
+
+		return BackendGroup{
+			Source:   types.NamespacedName{Namespace: "test", Name: name},
+			RuleIdx:  ruleIdx,
+			Backends: backends,
+		}
 	}
 
-	expName := "test_foo_9090"
-	if name := generateUpstreamName(backendService{Name: "foo", Namespace: "test", Port: 9090}); name != expName {
-		t.Errorf("generateUpstreamName() returned unexepected name: %s, expected: %s", name, expName)
+	hr1Rule0 := createBackendGroup("hr1", 0, "foo", "bar")
+
+	hr1Rule1 := createBackendGroup("hr1", 1, "foo")
+
+	hr2Rule0 := createBackendGroup("hr2", 0, "foo", "bar")
+
+	hr2Rule1 := createBackendGroup("hr2", 1, "foo")
+
+	hr3Rule0 := createBackendGroup("hr3", 0, "foo", "bar")
+
+	hr3Rule1 := createBackendGroup("hr3", 1, "foo")
+
+	hrInvalid := createBackendGroup("hr-invalid", 0, "invalid")
+
+	invalidRoutes := map[types.NamespacedName]*route{
+		{Name: "invalid", Namespace: "test"}: {
+			BackendRefs: BackendRefs{
+				ByRule: map[ruleIndex]BackendGroup{
+					0: hrInvalid,
+				},
+			},
+		},
+	}
+
+	routes := map[types.NamespacedName]*route{
+		{Name: "hr1", Namespace: "test"}: {
+			BackendRefs: BackendRefs{
+				ByRule: map[ruleIndex]BackendGroup{
+					0: hr1Rule0,
+					1: hr1Rule1,
+				},
+			},
+		},
+		{Name: "hr2", Namespace: "test"}: {
+			BackendRefs: BackendRefs{
+				ByRule: map[ruleIndex]BackendGroup{
+					0: hr2Rule0,
+					1: hr2Rule1,
+				},
+			},
+		},
+	}
+
+	routes2 := map[types.NamespacedName]*route{
+		// this backend group is a dupe and should be ignored.
+		{Name: "hr1", Namespace: "test"}: {
+			BackendRefs: BackendRefs{
+				ByRule: map[ruleIndex]BackendGroup{
+					0: hr1Rule0,
+					1: hr1Rule1,
+				},
+			},
+		},
+		{Name: "hr3", Namespace: "test"}: {
+			BackendRefs: BackendRefs{
+				ByRule: map[ruleIndex]BackendGroup{
+					0: hr3Rule0,
+					1: hr3Rule1,
+				},
+			},
+		},
+	}
+
+	listeners := map[string]*listener{
+		"invalid-listener": {
+			Valid:  false,
+			Routes: invalidRoutes,
+		},
+		"listener-1": {
+			Valid:  true,
+			Routes: routes,
+		},
+		"listener-2": {
+			Valid:  true,
+			Routes: routes2,
+		},
+	}
+
+	expGroups := []BackendGroup{
+		hr1Rule0,
+		hr1Rule1,
+		hr2Rule0,
+		hr2Rule1,
+		hr3Rule0,
+		hr3Rule1,
+	}
+
+	result := buildBackendGroups(listeners)
+
+	if diff := helpers.Diff(expGroups, result); diff != "" {
+		t.Errorf("buildBackendGroups() mismatch: %+v", diff)
 	}
 }

@@ -23,6 +23,8 @@ type Configuration struct {
 	SSLServers []VirtualServer
 	// Upstreams holds all Upstreams.
 	Upstreams []Upstream
+	// BackendGroups holds all BackendGroups.
+	BackendGroups []BackendGroup
 }
 
 // VirtualServer is a virtual server.
@@ -68,14 +70,14 @@ type MatchRule struct {
 	MatchIdx int
 	// RuleIdx is the index of the corresponding rule in the HTTPRoute.
 	RuleIdx int
-	// UpstreamName is the name of the upstream for this routing rule.
-	UpstreamName string
-	// Source is the corresponding HTTPRoute resource.
-	// FIXME(pleshakov): Consider referencing only the parts neeeded for the config generation rather than
-	// the entire resource.
-	Source *v1beta1.HTTPRoute
 	// Filters holds the filters for the MatchRule.
 	Filters Filters
+	// BackendGroup is the group of Backends that the rule routes to.
+	BackendGroup BackendGroup
+	// Source is the corresponding HTTPRoute resource.
+	// FIXME(pleshakov): Consider referencing only the parts needed for the config generation rather than
+	// the entire resource.
+	Source *v1beta1.HTTPRoute
 }
 
 // GetMatch returns the HTTPRouteMatch of the Route .
@@ -94,16 +96,52 @@ func buildConfiguration(graph *graph) Configuration {
 		return Configuration{}
 	}
 
-	upstreams := buildUpstreams(graph.Backends)
+	upstreams := buildUpstreams(graph.Gateway.Listeners)
 	httpServers, sslServers := buildServers(graph.Gateway.Listeners)
+	backendGroups := buildBackendGroups(graph.Gateway.Listeners)
 
 	config := Configuration{
-		HTTPServers: httpServers,
-		SSLServers:  sslServers,
-		Upstreams:   upstreams,
+		HTTPServers:   httpServers,
+		SSLServers:    sslServers,
+		Upstreams:     upstreams,
+		BackendGroups: backendGroups,
 	}
 
 	return config
+}
+
+func buildBackendGroups(listeners map[string]*listener) []BackendGroup {
+	// There can be duplicate backend groups if a route is attached to multiple listeners.
+	// We use a map to deduplicate them.
+	uniqueGroups := make(map[string]BackendGroup, 0)
+
+	for _, l := range listeners {
+
+		if !l.Valid {
+			continue
+		}
+
+		for _, r := range l.Routes {
+			for _, group := range r.BackendRefs.ByRule {
+				if _, ok := uniqueGroups[group.GroupName()]; !ok {
+					uniqueGroups[group.GroupName()] = group
+				}
+			}
+		}
+
+	}
+
+	groups := make([]BackendGroup, 0, len(uniqueGroups))
+	for _, group := range uniqueGroups {
+		groups = append(groups, group)
+	}
+
+	// sort upstreams for test-ability
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].GroupName() < groups[j].GroupName()
+	})
+
+	return groups
 }
 
 func buildServers(listeners map[string]*listener) (http, ssl []VirtualServer) {
@@ -176,8 +214,8 @@ func (hpr *hostPathRules) upsertListener(l *listener) {
 					rule.MatchRules = append(rule.MatchRules, MatchRule{
 						MatchIdx:     j,
 						RuleIdx:      i,
-						UpstreamName: generateUpstreamName(r.BackendServices[ruleIndex(i)]),
 						Source:       r.Source,
+						BackendGroup: r.BackendRefs.ByRule[ruleIndex(i)],
 						Filters:      filters,
 					})
 
@@ -242,6 +280,42 @@ func (hpr *hostPathRules) buildServers() []VirtualServer {
 	})
 
 	return servers
+}
+
+func buildUpstreams(listeners map[string]*listener) []Upstream {
+	// There can be duplicate upstreams if multiple routes reference the same upstream.
+	// We use a map to deduplicate them.
+	uniqueUpstreams := make(map[string]Upstream)
+
+	for _, l := range listeners {
+
+		if !l.Valid {
+			continue
+		}
+
+		for _, route := range l.Routes {
+			for name, eps := range route.BackendRefs.Resolved {
+				if _, ok := uniqueUpstreams[name]; !ok {
+					uniqueUpstreams[name] = Upstream{
+						Name:      name,
+						Endpoints: eps,
+					}
+				}
+			}
+		}
+	}
+
+	upstreams := make([]Upstream, 0, len(uniqueUpstreams))
+	for _, u := range uniqueUpstreams {
+		upstreams = append(upstreams, u)
+	}
+
+	// sort upstreams for test-ability
+	sort.Slice(upstreams, func(i, j int) bool {
+		return upstreams[i].Name < upstreams[j].Name
+	})
+
+	return upstreams
 }
 
 func getListenerHostname(h *v1beta1.Hostname) string {
