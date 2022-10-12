@@ -1,14 +1,4 @@
-package config
-
-// HTTPServers holds the list of HTTP servers.
-type HTTPServers struct {
-	Servers []Server
-}
-
-// HTTPUpstreams holds the list of HTTP upstreams.
-type HTTPUpstreams struct {
-	Upstreams []Upstream
-}
+package http
 
 // Server holds all configuration for an HTTP server.
 type Server struct {
@@ -44,6 +34,7 @@ type SSL struct {
 type StatusCode int
 
 const (
+	// StatusFound is the HTTP 302 status code.
 	StatusFound StatusCode = 302
 	// StatusNotFound is the HTTP 404 status code.
 	StatusNotFound StatusCode = 404
@@ -58,4 +49,16 @@ type Upstream struct {
 // UpstreamServer holds all configuration for an HTTP upstream server.
 type UpstreamServer struct {
 	Address string
+}
+
+// SplitClient holds all configuration for an HTTP split client.
+type SplitClient struct {
+	VariableName  string
+	Distributions []SplitClientDistribution
+}
+
+// SplitClientDistribution maps Percentage to Value in a SplitClient.
+type SplitClientDistribution struct {
+	Percent string
+	Value   string
 }

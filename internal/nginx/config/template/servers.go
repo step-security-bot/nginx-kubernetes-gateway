@@ -1,7 +1,7 @@
-package config
+package template
 
-var httpServersTemplate = `
-{{ range $s := .Servers }}
+var serversTemplateText = `
+{{ range $s := . }}
 	{{ if $s.IsDefaultSSL }}
 server {
 	listen 443 ssl default_server;
