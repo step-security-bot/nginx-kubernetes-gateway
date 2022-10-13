@@ -11,6 +11,8 @@ import (
 const (
 	// nginx502Server is used as a backend for services that cannot be resolved (have no IP address).
 	nginx502Server = "unix:/var/lib/nginx/nginx-502-server.sock"
+	// nginx500Server is used as a server for the invalid backend ref upstream.
+	nginx500Server = "unix:/var/lib/nginx/nginx-500-server.sock"
 	// invalidBackendRef is used as an upstream name for invalid backend references.
 	invalidBackendRef = "invalid-backend-ref"
 )
@@ -65,7 +67,7 @@ func createInvalidBackendRefUpstream() http.Upstream {
 		Name: invalidBackendRef,
 		Servers: []http.UpstreamServer{
 			{
-				Address: nginx502Server,
+				Address: nginx500Server,
 			},
 		},
 	}

@@ -128,7 +128,7 @@ func TestCreateUpstreams(t *testing.T) {
 			Name: invalidBackendRef,
 			Servers: []http.UpstreamServer{
 				{
-					Address: nginx502Server,
+					Address: nginx500Server,
 				},
 			},
 		},
