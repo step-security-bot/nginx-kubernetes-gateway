@@ -19,3 +19,8 @@ updates:
     directory: "/internal/mode/static/nginx/modules"
     schedule:
       interval: "daily"
+
+  - package-ecosystem: docker
+    directory: /conformance/tests
+    schedule:
+      interval: daily
